@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>拉脱法测液体表面张力 - 吊环法 | 完整版</title>
+  <style>
+    body { margin:0; overflow:hidden; font-family:"Microsoft YaHei",sans-serif; background:#0a0a1a; }
+    #info {
+      position:absolute; top:20px; left:20px; background:rgba(0,0,0,0.75); color:#eee;
+      padding:12px 20px; border-radius:8px; pointer-events:none; z-index:5;
+      border-left:4px solid #4ec0e9; max-width:400px;
+    }
+    #info h2 { margin:0 0 5px 0; font-size:20px; }
+    #info p { margin:3px 0; font-size:14px; color:#ccc; }
+    #sensor-display {
+      position:absolute; top:20px; right:20px; background:rgba(20,20,35,0.9);
+      color:white; padding:20px 25px; border-radius:16px; text-align:center; z-index:10;
+      border:2px solid rgba(78,192,233,0.4); min-width:200px;
+    }
+    .sensor-label { font-size:13px; color:#aaa; letter-spacing:2px; }
+    .sensor-reading { font-size:48px; font-weight:bold; color:#00ff88; font-family:'Courier New',monospace; }
+    .sensor-unit { font-size:16px; color:#ccc; }
+    .progress-bar { width:100%; height:6px; background:rgba(255,255,255,0.15); border-radius:3px; margin-top:12px; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:3px; transition:width 0.1s ease; width:0%;
+      background:linear-gradient(90deg,#4ec0e9,#00ff88,#ffaa00,#ff4444); }
+    #status-panel {
+      position:absolute; bottom:30px; left:30px; background:rgba(20,20,30,0.85);
+      color:white; padding:15px 25px; border-radius:12px; z-index:5;
+      border:1px solid rgba(255,255,255,0.2);
+    }
+    .status-row { display:flex; justify-content:space-between; font-size:15px; margin:5px 0; gap:20px; }
+    .status-label { color:#aaa; }
+    .status-value { font-weight:bold; color:#4ec0e9; background:rgba(0,0,0,0.4); padding:3px 12px; border-radius:20px; font-size:14px; }
+    #control-panel {
+      position:absolute; bottom:30px; right:30px; background:rgba(20,20,35,0.9);
+      color:white; padding:20px 25px; border-radius:16px; z-index:10;
+      border:2px solid rgba(78,192,233,0.5); min-width:260px;
+      display:flex; flex-direction:column; gap:15px;
+    }
+    #control-panel h3 { margin:0; font-size:16px; color:#4ec0e9; text-align:center; }
+    .btn-group { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+    .ctrl-btn {
+      background:#4ec0e9; border:none; color:white; font-weight:bold;
+      font-size:15px; padding:10px 18px; border-radius:25px; cursor:pointer;
+      transition:all 0.3s;
+    }
+    .ctrl-btn:hover { background:#3aa8d0; transform:scale(1.05); }
+    .ctrl-btn.auto { background:#ffaa00; }
+    .ctrl-btn.auto:hover { background:#dd9900; }
+    .ctrl-btn.reset { background:#ff5555; }
+    .ctrl-btn.reset:hover { background:#dd4444; }
+    .slider-container { display:flex; flex-direction:column; gap:5px; }
+    .slider-label { display:flex; justify-content:space-between; font-size:13px; color:#ccc; }
+    input[type=range] {
+      -webkit-appearance:none; width:100%; height:8px; border-radius:4px;
+      background:linear-gradient(90deg,#4ec0e9,#00ff88,#ffaa00,#ff4444); outline:none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance:none; width:28px; height:28px; border-radius:50%;
+      background:white; cursor:pointer; border:3px solid #4ec0e9; box-shadow:0 0 10px rgba(78,192,233,0.5);
+    }
+    .note {
+      position:absolute; bottom:30px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,0.5); color:#999; padding:6px 18px; border-radius:20px;
+      font-size:13px; pointer-events:none; z-index:5;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <h2>拉脱法 - 吊环测表面张力</h2>
+    <p>液体: 水 | 吊环直径: 3.0 cm | 表面张力系数: 0.0728 N/m</p>
+    <p>硅压阻式力敏传感器 - 交互版</p>
+  </div>
+  <div id="sensor-display">
+    <div class="sensor-label">硅压阻式力敏传感器</div>
+    <div class="sensor-reading" id="sensorReading">0.00</div>
+    <div class="sensor-unit">mV</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div id="status-panel">
+    <div class="status-row"><span class="status-label">拉伸距离</span><span class="status-value" id="heightDisplay">0.00 mm</span></div>
+    <div class="status-row"><span class="status-label">状态</span><span class="status-value" id="stateDisplay">手动控制中</span></div>
+    <div class="status-row"><span class="status-label">液膜</span><span class="status-value" id="filmDisplay" style="color:#4ec0e9;">无</span></div>
+  </div>
+  <div id="control-panel">
+    <h3>平台升降控制</h3>
+    <div class="slider-container">
+      <div class="slider-label"><span>浸入(最高)</span><span>拉脱(最低)</span></div>
+      <input type="range" id="heightSlider" min="0" max="100" value="0" step="0.5">
+      <div class="slider-label"><span>液面位置: <span id="sliderValue">最低</span></span></div>
+    </div>
+    <div class="btn-group">
+      <button class="ctrl-btn" id="btnUp">上升</button>
+      <button class="ctrl-btn" id="btnDown">下降</button>
+      <button class="ctrl-btn auto" id="btnAuto">自动演示</button>
+      <button class="ctrl-btn reset" id="btnReset">重置</button>
+    </div>
+  </div>
+  <div class="note">鼠标拖动旋转 | 滚轮缩放 | 键盘方向键控制 | 右侧滑块</div>
+
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.157.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.157.0/examples/jsm/" } }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ========== 场景 ==========
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a1030);
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 50);
+    camera.position.set(7, 4.5, 9);
+    camera.lookAt(0, 2.0, 0);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 2.0, 0);
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0x505070, 0.7));
+    const dLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dLight.position.set(5, 8, 5); dLight.castShadow = true;
+    dLight.shadow.mapSize.set(1024,1024);
+    dLight.shadow.camera.near=0.5; dLight.shadow.camera.far=40;
+    dLight.shadow.camera.left=-8; dLight.shadow.camera.right=8;
+    dLight.shadow.camera.top=8; dLight.shadow.camera.bottom=-4;
+    scene.add(dLight);
+    scene.add(new THREE.DirectionalLight(0x8899cc,0.4).position.set(-2,3,-3));
+    scene.add(new THREE.PointLight(0x5588bb,0.4,8).position.set(0,4,3));
+
+    // ========== 参数 ==========
+    const ringRadius = 1.5, ringY = 3.2, ringZ = 0.2;
+    const maxStretch = 2.5;
+    const maxForce = 13.7;       // mN
+    const maxVoltage = 45.0;     // mV (硅压阻式传感器典型输出范围)
+    const platformMinY = -2.0, platformMaxY = 3.6;
+    let platformY = platformMinY, waterFilmMesh = null, currentForce = 0, currentVoltage = 0;
+    let autoMode = false, autoDirection = 'up';
+    const autoSpeed = 0.015;
+
+    function getLiquidY() { return platformY - 0.6 + 0.5; }
+
+    // ========== 地面 ==========
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(14,14), new THREE.MeshStandardMaterial({color:0x1a1a2e,roughness:0.8}));
+    ground.rotation.x=-Math.PI/2; ground.position.y=-3; ground.receiveShadow=true; scene.add(ground);
+
+    // ========== 支架 ==========
+    const standMat = new THREE.MeshStandardMaterial({color:0x888899,roughness:0.3,metalness:0.7});
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.25,7.5,16),standMat);
+    pillar.position.set(0,1.5,-3.2); pillar.castShadow=true; pillar.receiveShadow=true; scene.add(pillar);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,3.8),standMat);
+    beam.position.set(0,5.5,-1.3); beam.castShadow=true; beam.receiveShadow=true; scene.add(beam);
+
+    // ========== 力敏传感器 ==========
+    const sensorGroup = new THREE.Group();
+    sensorGroup.position.set(0,5.1,ringZ); scene.add(sensorGroup);
+    const sBody = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.3,0.6,16),new THREE.MeshStandardMaterial({color:0x556677,roughness:0.2,metalness:0.8}));
+    sBody.castShadow=true; sensorGroup.add(sBody);
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.1,0.04,8,12,Math.PI),new THREE.MeshStandardMaterial({color:0xcccccc,roughness:0.2,metalness:0.9}));
+    hook.position.y=-0.55; hook.rotation.y=Math.PI; hook.castShadow=true; sensorGroup.add(hook);
+
+    // ========== 液膜容器 ==========
+    const filmContainer = new THREE.Group();
+    filmContainer.position.set(0, 0, ringZ); scene.add(filmContainer);
+
+    // ========== 吊环 ==========
+    const ringGroup = new THREE.Group();
+    ringGroup.position.set(0, ringY, ringZ); scene.add(ringGroup);
+    const wireMat2 = new THREE.MeshStandardMaterial({color:0xdddddd,roughness:0.3,metalness:0.7});
+    for(let s=-1;s<=1;s+=2){
+      const w=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.9,6),wireMat2);
+      w.position.set(s*0.2,0.5,0); w.rotation.z=s*0.3; w.castShadow=true; ringGroup.add(w);
+    }
+    const torus = new THREE.Mesh(new THREE.TorusGeometry(ringRadius,0.07,32,80),new THREE.MeshStandardMaterial({color:0xffcc88,roughness:0.2,metalness:0.9,emissive:new THREE.Color(0x221100)}));
+    torus.rotation.x=Math.PI/2; torus.castShadow=true; torus.receiveShadow=true; ringGroup.add(torus);
+
+    // ========== 升降平台 ==========
+    const platformGroup = new THREE.Group();
+    platformGroup.position.y = platformY; scene.add(platformGroup);
+    const pDisc = new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.6,0.2,48),new THREE.MeshStandardMaterial({color:0x555566,roughness:0.3,metalness:0.6}));
+    pDisc.position.y=-1; pDisc.castShadow=true; pDisc.receiveShadow=true; platformGroup.add(pDisc);
+    const pColumn = new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.4,2.5,16),new THREE.MeshStandardMaterial({color:0x666677,roughness:0.3,metalness:0.7}));
+    pColumn.position.y=-2.3; pColumn.castShadow=true; platformGroup.add(pColumn);
+    for(let i=0;i<4;i++){
+      const a=(i/4)*Math.PI*2+Math.PI/4;
+      const rod=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,2.5,8),new THREE.MeshStandardMaterial({color:0x888899,roughness:0.3,metalness:0.6}));
+      rod.position.set(Math.cos(a)*2.0,-2.3,Math.sin(a)*2.0); rod.castShadow=true; platformGroup.add(rod);
+    }
+
+    // ========== 烧杯 ==========
+    const beakerGroup = new THREE.Group();
+    beakerGroup.position.y = -0.6; platformGroup.add(beakerGroup);
+    const beaker = new THREE.Mesh(new THREE.CylinderGeometry(2.1,1.9,2.2,48),new THREE.MeshPhysicalMaterial({color:0xd0e8ff,metalness:0.05,roughness:0.1,transparent:true,opacity:0.3}));
+    beaker.position.y=1.1; beaker.castShadow=true; beaker.receiveShadow=true; beakerGroup.add(beaker);
+    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(2.0,1.85,1.8,48),new THREE.MeshPhongMaterial({color:0x4499dd,specular:0x112233,shininess:30,transparent:true,opacity:0.7}));
+    liquid.position.y=0.9; liquid.receiveShadow=true; beakerGroup.add(liquid);
+    const surfaceDisc = new THREE.Mesh(new THREE.CircleGeometry(1.98,64),new THREE.MeshPhongMaterial({color:0x88ccff,specular:0x224466,shininess:80,transparent:true,opacity:0.65,side:THREE.DoubleSide}));
+    surfaceDisc.position.y=0.5; surfaceDisc.rotation.x=-Math.PI/2; beakerGroup.add(surfaceDisc);
+
+    // ========== 表面张力系数测定仪主机 ==========
+    const SCALE = 3.0;
+    const hostGroup = new THREE.Group();
+    hostGroup.position.set(-4.5, -1.0, 2.5);
+    hostGroup.rotation.y = 0.4;
+    hostGroup.scale.set(SCALE, SCALE, SCALE);
+    scene.add(hostGroup);
+
+    const tableTop = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.12, 1.2),
+      new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.4, metalness: 0.1 })
+    );
+    tableTop.position.y = -0.6;
+    tableTop.castShadow = true; tableTop.receiveShadow = true;
+    hostGroup.add(tableTop);
+
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x7a8a6a, roughness: 0.55, metalness: 0.05 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0x5a6a4a, roughness: 0.4, metalness: 0.1 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.3 });
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.15, metalness: 0.9 });
+    const glassMat = new THREE.MeshPhongMaterial({ color: 0x111111, specular: 0x444444, shininess: 90, transparent: true, opacity: 0.7 });
+
+    const mainBox = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.5, 0.65), bodyMat);
+    mainBox.position.y = -0.3; mainBox.castShadow = true; mainBox.receiveShadow = true;
+    hostGroup.add(mainBox);
+
+    const frontBezel = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.46, 0.03), trimMat);
+    frontBezel.position.set(0, -0.3, 0.33); hostGroup.add(frontBezel);
+
+    const screenRecess = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.02), darkMat);
+    screenRecess.position.set(-0.15, -0.22, 0.35); hostGroup.add(screenRecess);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 200; canvas.height = 100;
+    const ctx = canvas.getContext('2d');
+    const screenTexture = new THREE.CanvasTexture(canvas);
+    const screenPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.3, 0.16),
+      new THREE.MeshBasicMaterial({ map: screenTexture, emissive: new THREE.Color(0xff0000) })
+    );
+    screenPlane.position.set(-0.15, -0.22, 0.36); hostGroup.add(screenPlane);
+
+    const screenGlass = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.015), glassMat);
+    screenGlass.position.set(-0.15, -0.22, 0.37); hostGroup.add(screenGlass);
+
+    const portRing = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 16, 16), metalMat);
+    portRing.position.set(0.22, -0.22, 0.36); hostGroup.add(portRing);
+    const portInner = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.05, 16), darkMat);
+    portInner.position.set(0.22, -0.22, 0.35); hostGroup.add(portInner);
+
+    const plugGroup = new THREE.Group();
+    plugGroup.position.set(0.22, -0.22, 0.42); hostGroup.add(plugGroup);
+    const plugBody = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 16), darkMat);
+    plugBody.rotation.x = Math.PI/2; plugBody.position.z = 0.06; plugGroup.add(plugBody);
+    const plugCable = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.35, 8), new THREE.MeshStandardMaterial({color:0x333333,roughness:0.5}));
+    plugCable.position.z = 0.25; plugGroup.add(plugCable);
+    let plugInserted = true;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    renderer.domElement.addEventListener('click', (e) => {
+      mouse.x = (e.clientX/window.innerWidth)*2-1;
+      mouse.y = -(e.clientY/window.innerHeight)*2+1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects([portRing, portInner, plugBody], true);
+      if (hits.length > 0) {
+        plugInserted = !plugInserted;
+        plugGroup.position.z = plugInserted ? 0.42 : 0.65;
+      }
+    });
+
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.03, 16), metalMat);
+    knob.position.set(-0.15, -0.38, 0.36); knob.rotation.x = Math.PI/2; hostGroup.add(knob);
+
+    const handleGroup = new THREE.Group();
+    handleGroup.position.set(-0.55, -0.15, 0); hostGroup.add(handleGroup);
+    const handleArm1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.08), bodyMat);
+    handleArm1.position.set(0, 0, 0.22); handleGroup.add(handleArm1);
+    const handleArm2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.08), bodyMat);
+    handleArm2.position.set(0, 0, -0.22); handleGroup.add(handleArm2);
+    const handleBar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.44, 8), bodyMat);
+    handleBar.rotation.x = Math.PI/2; handleBar.position.set(0.08, 0, 0); handleGroup.add(handleBar);
+
+    function drawDisplay(value) {
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, 200, 100);
+      const text = String(Math.floor(value)).padStart(4, '0');
+      ctx.fillStyle = '#ff2200';
+      ctx.font = 'bold 50px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 10;
+      ctx.fillText(text, 100, 50);
+      // 单位标注
+      ctx.fillStyle = '#ff6644';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText('mV', 155, 65);
+      screenTexture.needsUpdate = true;
+    }
+    drawDisplay(0);
+
+    // ========== 液膜 ==========
+    function createFilmGeometry(topY, bottomY) {
+      const diff = topY - bottomY;
+      if (diff <= 0.02 || diff > maxStretch) return null;
+      const segments=80, rings=50;
+      const verts=[], idx=[];
+      const topR=ringRadius, botR=ringRadius*1.05;
+      const ratio=Math.min(diff/maxStretch,1);
+      const midR=ringRadius*(0.90-ratio*0.22);
+      const midPos=0.38;
+      for(let j=0;j<=rings;j++){
+        const t=j/rings, y=topY+(bottomY-topY)*t;
+        let r;
+        if(t<=midPos){const s=t/midPos; r=topR+(midR-topR)*s*s*(3-2*s);}
+        else{const s=(t-midPos)/(1-midPos); r=midR+(botR-midR)*s*s*(3-2*s);}
+        for(let i=0;i<=segments;i++){const a=(i/segments)*Math.PI*2; verts.push(r*Math.cos(a),y,r*Math.sin(a));}
+      }
+      for(let j=0;j<rings;j++)for(let i=0;i<segments;i++){const a=j*(segments+1)+i,b=a+segments+1; idx.push(a,b,a+1,b,a+1,b+1);}
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(verts),3));
+      g.setIndex(idx); g.computeVertexNormals();
+      return g;
+    }
+
+    function updateFilm(){
+      if(waterFilmMesh){filmContainer.remove(waterFilmMesh);waterFilmMesh.geometry.dispose();waterFilmMesh.material.dispose();waterFilmMesh=null;}
+      const lY=getLiquidY(),diff=ringY-lY;
+      if(diff>0.02&&diff<maxStretch){const g=createFilmGeometry(ringY,lY); if(g){waterFilmMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:0x88ccff,specular:0x336699,shininess:40,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false}));waterFilmMesh.renderOrder=1;filmContainer.add(waterFilmMesh);}}
+    }
+
+    function updateAll(){
+      platformGroup.position.y=platformY; updateFilm();
+      const lY=getLiquidY(),gap=ringY-lY;
+      currentForce=(waterFilmMesh&&gap>0.02&&gap<maxStretch)?maxForce*(gap/maxStretch):0;
+      // 力值转换为电压值 (线性关系: 0~13.7mN -> 0~45mV)
+      currentVoltage = currentForce * (maxVoltage / maxForce);
+      const gapMm=gap*10;
+      document.getElementById('heightDisplay').textContent=gapMm.toFixed(2)+' mm';
+      const hasFilm=waterFilmMesh!==null;
+      if(gap<=0.02){document.getElementById('filmDisplay').textContent='浸入液体中';document.getElementById('filmDisplay').style.color='#ffcc00';}
+      else if(hasFilm){document.getElementById('filmDisplay').textContent='腰形可见';document.getElementById('filmDisplay').style.color='#88ff88';}
+      else{document.getElementById('filmDisplay').textContent='已断裂';document.getElementById('filmDisplay').style.color='#ff6666';}
+      document.getElementById('sensorReading').textContent=currentVoltage.toFixed(2);
+      document.getElementById('progressFill').style.width=Math.min((currentVoltage/maxVoltage)*100,100)+'%';
+      const el=document.getElementById('sensorReading');
+      el.style.color=currentVoltage>maxVoltage*0.9?'#ff4444':currentVoltage>maxVoltage*0.4?'#ffaa00':'#00ff88';
+      document.getElementById('heightSlider').value=((platformY-platformMinY)/(platformMaxY-platformMinY))*100;
+      if(gap<=0.02){document.getElementById('sliderValue').textContent='吊环已浸入';document.getElementById('sliderValue').style.color='#ffcc00';}
+      else if(gap>=maxStretch){document.getElementById('sliderValue').textContent='已拉脱';document.getElementById('sliderValue').style.color='#ff6666';}
+      else{document.getElementById('sliderValue').textContent=gapMm.toFixed(1)+' mm';document.getElementById('sliderValue').style.color='#88ff88';}
+      document.getElementById('stateDisplay').textContent=autoMode?(autoDirection==='up'?'自动上升中':'自动下降中'):'手动控制';
+      // LED显示电压值（放大100倍以便显示整数）
+      const displayVal = Math.round(currentVoltage * 10);
+      drawDisplay(displayVal);
+    }
+
+    // ========== 交互 ==========
+    document.getElementById('heightSlider').addEventListener('input',(e)=>{autoMode=false;platformY=platformMinY+(platformMaxY-platformMinY)*(parseFloat(e.target.value)/100);updateAll();});
+    document.getElementById('btnUp').addEventListener('click',()=>{autoMode=false;platformY=Math.min(platformMaxY,platformY+0.15);updateAll();});
+    document.getElementById('btnDown').addEventListener('click',()=>{autoMode=false;platformY=Math.max(platformMinY,platformY-0.15);updateAll();});
+    document.getElementById('btnAuto').addEventListener('click',()=>{autoMode=!autoMode;if(autoMode){autoDirection=platformY>=platformMaxY?'down':'up';document.getElementById('btnAuto').textContent='停止自动';document.getElementById('btnAuto').style.background='#ff6600';}else{document.getElementById('btnAuto').textContent='自动演示';document.getElementById('btnAuto').style.background='#ffaa00';}});
+    document.getElementById('btnReset').addEventListener('click',()=>{autoMode=false;document.getElementById('btnAuto').textContent='自动演示';document.getElementById('btnAuto').style.background='#ffaa00';platformY=platformMinY;updateAll();});
+    window.addEventListener('keydown',(e)=>{if(e.key==='ArrowUp'){e.preventDefault();autoMode=false;platformY=Math.min(platformMaxY,platformY+0.1);updateAll();}else if(e.key==='ArrowDown'){e.preventDefault();autoMode=false;platformY=Math.max(platformMinY,platformY-0.1);updateAll();}});
+
+    function animate(){
+      requestAnimationFrame(animate);
+      if(autoMode){if(autoDirection==='up'){platformY+=autoSpeed;if(platformY>=platformMaxY){platformY=platformMaxY;autoDirection='down';}}else{platformY-=autoSpeed;if(platformY<=platformMinY){platformY=platformMinY;autoDirection='up';}}updateAll();}
+      handleGroup.rotation.z = Math.sin(Date.now()*0.003)*0.04;
+      controls.update(); renderer.render(scene,camera);
+    }
+    window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+    updateAll(); animate();
+  </script>
+</body>
+</html>
