@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拉脱法测液体表面张力 - 3D仿真实验</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            overflow: hidden; 
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #1a1a2e;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(10,10,30,0.9);
+            color: #fff;
+            padding: 18px 24px;
+            border-radius: 12px;
+            pointer-events: none;
+            font-size: 14px;
+            line-height: 2;
+            border: 1px solid rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+        }
+        #info h2 { margin-bottom: 8px; color: #4FC3F7; font-size: 20px; }
+        .val { color: #FFD740; font-weight: bold; }
+        #panel {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10,10,30,0.92);
+            color: #fff;
+            padding: 16px 28px;
+            border-radius: 14px;
+            text-align: center;
+            font-size: 15px;
+            border: 1px solid rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+        #panel button {
+            margin: 5px 6px;
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.25s;
+            letter-spacing: 0.5px;
+        }
+        .btn-up { background: #4CAF50; color: #fff; }
+        .btn-up:hover { background: #43A047; box-shadow: 0 0 15px rgba(76,175,80,0.5); }
+        .btn-down { background: #FF9800; color: #fff; }
+        .btn-down:hover { background: #F57C00; box-shadow: 0 0 15px rgba(255,152,0,0.5); }
+        .btn-detach { background: #f44336; color: #fff; animation: pulse 2s infinite; }
+        .btn-detach:hover { background: #d32f2f; box-shadow: 0 0 20px rgba(244,67,54,0.7); }
+        .btn-reset { background: #5C6BC0; color: #fff; }
+        .btn-reset:hover { background: #3F51B5; box-shadow: 0 0 15px rgba(92,107,192,0.5); }
+        @keyframes pulse {
+            0%,100% { box-shadow: 0 0 5px rgba(244,67,54,0.4); }
+            50% { box-shadow: 0 0 20px rgba(244,67,54,0.8); }
+        }
+        .reading { color: #FFD740; font-weight: bold; font-size: 18px; }
+        #tip {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>🧪 拉脱法 · 液体表面张力</h2>
+        <p>金属环外径 D₁ = <span class="val">3.50 cm</span></p>
+        <p>金属环内径 D₂ = <span class="val">3.30 cm</span></p>
+        <p>弹簧劲度系数 k = <span class="val">0.352 N/m</span></p>
+        <p>当前拉力 F = <span class="val" id="forceVal">0.000</span> N</p>
+        <p>表面张力系数 α = <span class="val" id="alphaVal">--</span> ×10⁻³ N/m</p>
+        <p style="font-size:12px;color:#aaa;">理论值(25°C纯水): 72.0 ×10⁻³ N/m</p>
+    </div>
+    <div id="tip">🖱 鼠标拖动旋转 | 📜 滚轮缩放 | ✋ 右键平移</div>
+    <div id="panel">
+        <span style="font-size:15px;">📐 弹簧伸长量: <span class="reading" id="scaleVal">0.00</span> mm</span><br>
+        <button class="btn-down" id="btnDown">⬇ 降低平台</button>
+        <button class="btn-up" id="btnUp">⬆ 提升平台</button>
+        <button class="btn-detach" id="btnDetach">💧 模拟拉脱</button>
+        <button class="btn-reset" id="btnReset">🔄 重置</button>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ==================== 场景初始化 ====================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+        scene.fog = new THREE.Fog(0x1a1a2e, 30, 80);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.5, 200);
+        camera.position.set(18, 10, 22);
+        camera.lookAt(0, 5, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 5.5, 0);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.minDistance = 8;
+        controls.maxDistance = 40;
+        controls.maxPolarAngle = Math.PI * 0.7;
+        controls.update();
+
+        // ==================== 光照 ====================
+        const ambientLight = new THREE.AmbientLight(0x404060, 3);
+        scene.add(ambientLight);
+        
+        const keyLight = new THREE.DirectionalLight(0xffffff, 6);
+        keyLight.position.set(15, 25, 10);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.set(2048, 2048);
+        keyLight.shadow.camera.near = 0.5;
+        keyLight.shadow.camera.far = 80;
+        keyLight.shadow.camera.left = -20;
+        keyLight.shadow.camera.right = 20;
+        keyLight.shadow.camera.top = 20;
+        keyLight.shadow.camera.bottom = -5;
+        keyLight.shadow.bias = -0.0001;
+        scene.add(keyLight);
+        
+        const fillLight = new THREE.DirectionalLight(0x8899cc, 2.5);
+        fillLight.position.set(-5, 8, -3);
+        scene.add(fillLight);
+        
+        const rimLight = new THREE.DirectionalLight(0xffffff, 2);
+        rimLight.position.set(0, 3, -10);
+        scene.add(rimLight);
+
+        // ==================== 地面 ====================
+        const groundGeo = new THREE.PlaneGeometry(50, 50);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.6, metalness: 0.3 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI/2;
+        ground.position.y = -0.5;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        
+        // 网格线
+        const grid = new THREE.GridHelper(40, 40, 0x444466, 0x222233);
+        grid.position.y = -0.49;
+        scene.add(grid);
+
+        // ==================== 实验台 ====================
+        const tableGeo = new THREE.CylinderGeometry(2.5, 2.8, 0.6, 32);
+        const tableMat = new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.4, metalness: 0.2 });
+        const table = new THREE.Mesh(tableGeo, tableMat);
+        table.position.y = -0.2;
+        table.castShadow = true;
+        table.receiveShadow = true;
+        scene.add(table);
+
+        // ==================== 焦利秤支架 ====================
+        const standGroup = new THREE.Group();
+        
+        // 底座
+        const baseGeo = new THREE.CylinderGeometry(1.2, 1.4, 0.3, 32);
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x37474F, roughness: 0.3, metalness: 0.7 });
+        const base = new THREE.Mesh(baseGeo, baseMat);
+        base.position.y = 0.25;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        standGroup.add(base);
+        
+        // 竖杆
+        const poleGeo = new THREE.CylinderGeometry(0.15, 0.18, 14, 32);
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0x78909C, roughness: 0.25, metalness: 0.8 });
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        pole.position.y = 7.2;
+        pole.castShadow = true;
+        standGroup.add(pole);
+        
+        // 顶部横梁
+        const beamGeo = new THREE.BoxGeometry(0.35, 0.25, 1.8);
+        const beamMat = new THREE.MeshStandardMaterial({ color: 0x546E7A, roughness: 0.3, metalness: 0.8 });
+        const beam = new THREE.Mesh(beamGeo, beamMat);
+        beam.position.set(0, 14.1, 0.3);
+        beam.castShadow = true;
+        standGroup.add(beam);
+        
+        // 顶部挂钩
+        const hookGeo = new THREE.TorusGeometry(0.2, 0.06, 8, 16, Math.PI);
+        const hookMat = new THREE.MeshStandardMaterial({ color: 0xB0BEC5, roughness: 0.2, metalness: 0.9 });
+        const hook = new THREE.Mesh(hookGeo, hookMat);
+        hook.position.set(0, 13.85, 0.65);
+        hook.rotation.x = Math.PI/2;
+        hook.rotation.z = Math.PI;
+        hook.castShadow = true;
+        standGroup.add(hook);
+        
+        standGroup.position.set(0, 0, 0);
+        scene.add(standGroup);
+
+        // ==================== 弹簧（动态） ====================
+        const springGroup = new THREE.Group();
+        const springPivot = new THREE.Group();
+        springPivot.position.set(0, 13.75, 0.65);
+        springGroup.add(springPivot);
+        
+        let springLength = 4.0; // 当前弹簧长度
+        const springRestLength = 4.0; // 原长
+        const springCoils = 30;
+        const springRadius = 0.25;
+        
+        function createSpring(length) {
+            // 清除旧弹簧
+            while(springPivot.children.length > 0) {
+                springPivot.remove(springPivot.children[0]);
+            }
+            
+            const points = [];
+            const numPoints = springCoils * 8;
+            for (let i = 0; i <= numPoints; i++) {
+                const t = i / numPoints;
+                const y = -t * length;
+                const angle = t * springCoils * Math.PI * 2;
+                const x = Math.cos(angle) * springRadius;
+                const z = Math.sin(angle) * springRadius;
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            
+            const curve = new THREE.CatmullRomCurve3(points);
+            const tubeGeo = new THREE.TubeGeometry(curve, 128, 0.04, 8, false);
+            const tubeMat = new THREE.MeshStandardMaterial({ 
+                color: 0x90A4AE, roughness: 0.2, metalness: 0.9 
+            });
+            const springMesh = new THREE.Mesh(tubeGeo, tubeMat);
+            springMesh.castShadow = true;
+            springMesh.name = "spring";
+            springPivot.add(springMesh);
+            
+            // 弹簧底部连接点
+            const bottomDotGeo = new THREE.SphereGeometry(0.12, 16, 16);
+            const bottomDotMat = new THREE.MeshStandardMaterial({ color: 0xB0BEC5, roughness: 0.2, metalness: 0.9 });
+            const bottomDot = new THREE.Mesh(bottomDotGeo, bottomDotMat);
+            bottomDot.position.set(0, -length, 0);
+            bottomDot.name = "bottomDot";
+            springPivot.add(bottomDot);
+        }
+        
+        createSpring(springLength);
+        scene.add(springGroup);
+
+        // ==================== 金属环挂钩与环 ====================
+        const ringGroup = new THREE.Group();
+        
+        // 连接细杆
+        const rodGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.5, 16);
+        const rodMat = new THREE.MeshStandardMaterial({ color: 0xB0BEC5, roughness: 0.2, metalness: 0.9 });
+        const rod = new THREE.Mesh(rodGeo, rodMat);
+        rod.position.y = -1.25;
+        rod.castShadow = true;
+        ringGroup.add(rod);
+        
+        // 金属环（外环 + 内环）
+        function createRing(radius, yOffset, color) {
+            const torusGeo = new THREE.TorusGeometry(radius, 0.06, 16, 64);
+            const torusMat = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.95 });
+            const torus = new THREE.Mesh(torusGeo, torusMat);
+            torus.rotation.x = Math.PI/2;
+            torus.position.y = yOffset;
+            torus.castShadow = true;
+            return torus;
+        }
+        
+        // 外径3.50cm → 半径1.75cm = 0.0175m，场景缩放：1m=1unit, 所以用0.175（放大10倍便于观察）
+        const scaleFactor = 10; // 将cm放大10倍便于观察
+        const outerRadius = 1.75 * scaleFactor / 100; // 0.175 units
+        const innerRadius = 1.65 * scaleFactor / 100; // 0.165 units
+        
+        const outerRing = createRing(outerRadius, -3.8, 0xCFD8DC);
+        const innerRing = createRing(innerRadius, -3.8, 0xB0BEC5);
+        
+        ringGroup.add(outerRing);
+        ringGroup.add(innerRing);
+        
+        // 连接内外环的细丝（4根）
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2;
+            const connGeo = new THREE.CylinderGeometry(0.02, 0.02, outerRadius - innerRadius, 8);
+            const conn = new THREE.Mesh(connGeo, rodMat);
+            conn.position.set(
+                Math.cos(angle) * (outerRadius + innerRadius) / 2,
+                -3.8,
+                Math.sin(angle) * (outerRadius + innerRadius) / 2
+            );
+            conn.rotation.z = Math.PI/2;
+            conn.rotation.y = -angle;
+            conn.castShadow = true;
+            ringGroup.add(conn);
+        }
+        
+        ringGroup.position.set(0, 9.75 - springLength, 0.65);
+        scene.add(ringGroup);
+
+        // ==================== 玻璃皿与液面 ====================
+        const dishGroup = new THREE.Group();
+        
+        // 玻璃皿
+        const dishOuterGeo = new THREE.CylinderGeometry(2.5, 2.2, 1.5, 48, 1, true);
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xcfecff, roughness: 0.05, metalness: 0.05,
+            transparent: true, opacity: 0.35, clearcoat: 0.3,
+            envMapIntensity: 0.5
+        });
+        const dishOuter = new THREE.Mesh(dishOuterGeo, glassMat);
+        dishOuter.position.y = 0.75;
+        dishOuter.castShadow = true;
+        dishGroup.add(dishOuter);
+        
+        const dishBottomGeo = new THREE.CylinderGeometry(2.2, 2.2, 0.1, 48);
+        const dishBottom = new THREE.Mesh(dishBottomGeo, glassMat);
+        dishBottom.position.y = 0.05;
+        dishGroup.add(dishBottom);
+        
+        // 液体
+        const liquidGeo = new THREE.CylinderGeometry(2.15, 2.15, 1.1, 48);
+        const liquidMat = new THREE.MeshPhysicalMaterial({
+            color: 0x4488cc, roughness: 0.1, metalness: 0.0,
+            transparent: true, opacity: 0.55, clearcoat: 0.5
+        });
+        const liquid = new THREE.Mesh(liquidGeo, liquidMat);
+        liquid.position.y = 0.6;
+        liquid.name = "liquid";
+        dishGroup.add(liquid);
+        
+        // 液面（用于视觉参考）
+        const surfaceGeo = new THREE.CylinderGeometry(2.14, 2.14, 0.02, 48);
+        const surfaceMat = new THREE.MeshPhysicalMaterial({
+            color: 0x88bbff, roughness: 0.02, metalness: 0.1,
+            transparent: true, opacity: 0.7, clearcoat: 1.0
+        });
+        const surface = new THREE.Mesh(surfaceGeo, surfaceMat);
+        surface.position.y = 1.15;
+        surface.name = "surface";
+        dishGroup.add(surface);
+        
+        dishGroup.position.set(0, 0.3, 0);
+        scene.add(dishGroup);
+
+        // ==================== 刻度尺 ====================
+        const rulerGroup = new THREE.Group();
+        
+        const rulerBackGeo = new THREE.BoxGeometry(0.6, 8, 0.08);
+        const rulerBackMat = new THREE.MeshStandardMaterial({ color: 0xFFFDE7, roughness: 0.5 });
+        const rulerBack = new THREE.Mesh(rulerBackGeo, rulerBackMat);
+        rulerBack.position.y = 4;
+        rulerGroup.add(rulerBack);
+        
+        // 刻度线
+        for (let i = 0; i <= 40; i++) {
+            const tickLength = i % 5 === 0 ? 0.25 : (i % 10 === 0 ? 0.35 : 0.15);
+            const tickGeo = new THREE.BoxGeometry(tickLength, 0.02, 0.02);
+            const tick = new THREE.Mesh(tickGeo, new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            tick.position.set(0.15, i * 0.2, 0.05);
+            rulerGroup.add(tick);
+        }
+        
+        rulerGroup.position.set(1.5, 3.5, 1.2);
+        rulerGroup.rotation.y = -0.3;
+        scene.add(rulerGroup);
+
+        // ==================== 粒子效果（液面张力） ====================
+        const particlesGroup = new THREE.Group();
+        const particlesGeo = new THREE.BufferGeometry();
+        const particlesCount = 200;
+        const particlesPositions = new Float32Array(particlesCount * 3);
+        for (let i = 0; i < particlesCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = Math.random() * outerRadius * 1.5;
+            particlesPositions[i * 3] = Math.cos(angle) * r;
+            particlesPositions[i * 3 + 1] = -3.78;
+            particlesPositions[i * 3 + 2] = Math.sin(angle) * r;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(particlesPositions, 3));
+        const particlesMat = new THREE.PointsMaterial({ 
+            color: 0xaaddff, size: 0.015, transparent: true, opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+        const particles = new THREE.Points(particlesGeo, particlesMat);
+        particles.visible = false;
+        particlesGroup.add(particles);
+        ringGroup.add(particlesGroup);
+
+        // ==================== 状态变量 ====================
+        const k = 0.352; // N/m
+        const D1 = 3.50e-2; // m
+        const D2 = 3.30e-2; // m
+        const L = Math.PI * (D1 + D2); // 有效周长
+        let currentDisplacement = 0; // 弹簧伸长量(mm)
+        let isDetached = false;
+        let platformOffset = 0;
+        
+        // 动画参数
+        let targetSpringLength = springRestLength;
+        let animating = false;
+
+        // ==================== UI更新 ====================
+        function updateUI() {
+            const force = k * (currentDisplacement / 1000); // N
+            const alpha = isDetached ? (force / L) : null;
+            
+            document.getElementById('scaleVal').textContent = currentDisplacement.toFixed(2);
+            document.getElementById('forceVal').textContent = force.toFixed(4);
+            if (alpha !== null && currentDisplacement > 0.5) {
+                document.getElementById('alphaVal').textContent = (alpha * 1000).toFixed(2);
+            } else if (isDetached) {
+                document.getElementById('alphaVal').textContent = '--';
+            } else {
+                document.getElementById('alphaVal').textContent = '--';
+            }
+        }
+
+        // ==================== 同步弹簧与环位置 ====================
+        function syncSpringAndRing() {
+            const actualLength = springRestLength + currentDisplacement / 100;
+            createSpring(actualLength);
+            ringGroup.position.y = springPivot.position.y - actualLength;
+        }
+
+        // ==================== 按钮事件 ====================
+        document.getElementById('btnDown').addEventListener('click', () => {
+            if (animating) return;
+            if (!isDetached) {
+                currentDisplacement = Math.max(0, currentDisplacement - 1.0);
+            }
+            syncSpringAndRing();
+            updateUI();
+        });
+        
+        document.getElementById('btnUp').addEventListener('click', () => {
+            if (animating) return;
+            if (!isDetached) {
+                currentDisplacement += 1.0;
+            }
+            syncSpringAndRing();
+            updateUI();
+        });
+        
+        document.getElementById('btnDetach').addEventListener('click', () => {
+            if (animating || isDetached) return;
+            animating = true;
+            
+            // 动画：环快速上升模拟拉脱
+            const detachDisplacement = currentDisplacement + 3.0;
+            const startVal = currentDisplacement;
+            const duration = 800;
+            const startTime = Date.now();
+            
+            function animateDetach() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1.0);
+                // ease-out
+                const eased = 1 - Math.pow(1 - progress, 3);
+                currentDisplacement = startVal + (detachDisplacement - startVal) * eased;
+                
+                syncSpringAndRing();
+                updateUI();
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animateDetach);
+                } else {
+                    isDetached = true;
+                    particles.visible = true;
+                    animating = false;
+                    // 粒子动画
+                    animateParticles();
+                    updateUI();
+                }
+            }
+            
+            animateDetach();
+        });
+        
+        document.getElementById('btnReset').addEventListener('click', () => {
+            currentDisplacement = 0;
+            isDetached = false;
+            particles.visible = false;
+            animating = false;
+            syncSpringAndRing();
+            updateUI();
+        });
+        
+        // 键盘控制
+        window.addEventListener('keydown', (e) => {
+            if (animating) return;
+            switch(e.key.toLowerCase()) {
+                case 'arrowup':
+                case 'w':
+                    if (!isDetached) currentDisplacement += 0.5;
+                    break;
+                case 'arrowdown':
+                case 's':
+                    if (!isDetached) currentDisplacement = Math.max(0, currentDisplacement - 0.5);
+                    break;
+                case 'd':
+                    document.getElementById('btnDetach').click();
+                    break;
+                case 'r':
+                    document.getElementById('btnReset').click();
+                    break;
+            }
+            syncSpringAndRing();
+            updateUI();
+        });
+
+        // ==================== 粒子动画 ====================
+        function animateParticles() {
+            if (!isDetached) {
+                particles.visible = false;
+                return;
+            }
+            particles.visible = true;
+            const positions = particles.geometry.attributes.position.array;
+            for (let i = 0; i < particlesCount; i++) {
+                positions[i * 3 + 1] += (Math.random() - 0.5) * 0.02;
+                if (positions[i * 3 + 1] < -4.5 || positions[i * 3 + 1] > -3.0) {
+                    positions[i * 3 + 1] = -3.78;
+                }
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+            if (isDetached) requestAnimationFrame(animateParticles);
+        }
+
+        // ==================== 水滴效果（拉脱后） ====================
+        const droplets = [];
+        function createDroplet() {
+            const size = 0.03 + Math.random() * 0.04;
+            const dropletGeo = new THREE.SphereGeometry(size, 8, 8);
+            const dropletMat = new THREE.MeshPhysicalMaterial({
+                color: 0x5599dd, roughness: 0.0, metalness: 0.0,
+                transparent: true, opacity: 0.8, clearcoat: 0.8
+            });
+            const droplet = new THREE.Mesh(dropletGeo, dropletMat);
+            droplet.position.copy(ringGroup.position);
+            droplet.position.y -= 3.5;
+            droplet.position.x += (Math.random() - 0.5) * 0.1;
+            droplet.position.z += (Math.random() - 0.5) * 0.1;
+            droplet.userData = { velocity: -0.02 - Math.random() * 0.04, life: 1.0 };
+            scene.add(droplet);
+            droplets.push(droplet);
+        }
+
+        // ==================== 渲染循环 ====================
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            controls.update();
+            
+            // 更新水滴
+            if (isDetached && Math.random() < 0.3) {
+                createDroplet();
+            }
+            for (let i = droplets.length - 1; i >= 0; i--) {
+                const d = droplets[i];
+                d.position.y += d.userData.velocity;
+                d.userData.life -= 0.01;
+                d.material.opacity = d.userData.life * 0.8;
+                if (d.userData.life <= 0 || d.position.y < -3) {
+                    scene.remove(d);
+                    droplets.splice(i, 1);
+                }
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // ==================== 窗口响应 ====================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ==================== 启动 ====================
+        syncSpringAndRing();
+        updateUI();
+        animate();
+        
+        console.log('🧪 拉脱法测液体表面张力 - 3D仿真实验已就绪');
+        console.log('操作提示：鼠标拖动旋转 | 滚轮缩放 | 右键平移');
+        console.log('键盘快捷键：W/↑ 提升 | S/↓ 降低 | D 拉脱 | R 重置');
+    </script>
+</body>
+</html>
